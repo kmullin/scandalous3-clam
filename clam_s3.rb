@@ -55,9 +55,7 @@ class ClamS3
 
   def inject!
     count = 0
-    puts get_last_asset_key
-    exit 
-    @bucket.objects.each do |obj|
+    @bucket.objects(:marker => get_last_asset_key).each do |obj|
       count += 1
       log("# %06d: %s" % [count, obj.inspect], false)
       if asset_exists?(obj)
