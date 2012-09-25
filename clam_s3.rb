@@ -22,7 +22,7 @@ class ClamS3
     @dry_run = options[:dry_run] || false
     @verbose = options[:verbose] || false
     @debug = options[:debug] || false
-    @max_threads = options[:max_threads] || 5+1
+    @max_threads = options[:max_threads] || 5+2 # workers + control
     database = YAML.load_file(options[:conf_file])['database']
     log options
     unless @dry_run
@@ -80,6 +80,11 @@ class ClamS3
           @queue.push(@bucket.objects[aws_key])
         end
         $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
+        sleep 5
+      end
+    end
+    @threads << Thread.new do
+      loop do
         if @queue.size < 100
           inject!
         else
@@ -116,11 +121,6 @@ class ClamS3
       SQL
     end
     result == 0 ? false : true
-  end
-
-  def get_last_scanned_asset
-    rows = @db.execute("select min(aws_key) from amazon_assets where bucket = '#{@bucket.name}' and is_virus is null;")
-    rows.empty? ? nil : rows[0][0]
   end
 
   def get_unscanned_assets
@@ -173,7 +173,7 @@ OptionParser.new do |opt|
   opt.on('-d', '--debug', 'Debug') { options[:debug] = true }
   opt.on('-n', '--dry-run', 'Dry run') { options[:dry_run] = true }
   opt.on('-b', '--bucket NAME', 'bucket name') { |name| options[:bucket] = name }
-  opt.on('-m', '--max-threads NUM', Integer, 'max threads (def. 5 + 1)') { |num| options[:max_threads] = num }
+  opt.on('-m', '--max-threads NUM', Integer, 'max threads (def. 5 + 2)') { |num| options[:max_threads] = num + 2 }
 
 end.parse!
 
