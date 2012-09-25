@@ -57,6 +57,8 @@ class ClamS3
       log("done!")
     end
     @queue = Queue.new
+    @mutex = Mutex.new
+    @files_scanned = 0
   end
 
   def inject!
@@ -119,8 +121,9 @@ class ClamS3
         set is_virus = #{result == 0 ? 0 : 1}, scanned_date = '#{Time.now.utc}'
         where (aws_key like '%#{File.basename(s3_obj.key)}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
       SQL
+      @mutex.synchronize { @files_scanned += 1 }
     end
-    result == 0 ? false : true
+    ! result.nil?
   end
 
   def get_unscanned_assets
