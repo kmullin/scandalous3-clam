@@ -178,7 +178,6 @@ OptionParser.new do |opt|
 end.parse!
 
 c = ClamS3.new(options)
-#c.inject!
 c.start_scan!
 while c.threads.size > 0
   sleep 0.1
