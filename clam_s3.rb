@@ -24,6 +24,10 @@ class ClamS3
     end
   end
 
+  def size
+    @bucket.size unless @dry_run
+  end
+
 end
 
 options = {}
@@ -41,3 +45,4 @@ OptionParser.new do |opt|
 end.parse!
 
 c = ClamS3.new(options)
+puts c.size
