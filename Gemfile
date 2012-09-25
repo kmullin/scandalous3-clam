@@ -1,5 +1,5 @@
 source :rubygems
 
-gem 'aws-s3'
+gem 'aws-sdk'
 gem 'sqlite3'
 gem 'clamav', :git => "git://github.com/kmullin/clamav.git"
