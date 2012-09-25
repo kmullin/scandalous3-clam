@@ -21,7 +21,7 @@ class ClamS3
     end
     @dry_run = options[:dry_run] || false
     @verbose = options[:verbose] || false
-    @debug = options[:debug] || e
+    @debug = options[:debug] || false
     database = YAML.load_file(options[:conf_file])['database']
     unless @dry_run
       @clamav = ClamAV.instance
@@ -75,12 +75,12 @@ class ClamS3
   def start_scan!
     @threads = []
     trap('INT') { @threads.dup.each {|t| Thread.kill(t); t.join; @threads.delete(t) } }
-        get_unscanned_assets.each do |aws_key|
-          @queue.push(@bucket.objects[aws_key])
-        end
     @threads << Thread.new do
       loop do
         @queue.clear
+        get_unscanned_assets.each do |aws_key|
+          @queue.push(@bucket.objects[aws_key])
+        end
         $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
         if @queue.size < 100
           inject!
@@ -89,20 +89,15 @@ class ClamS3
         end
       end
     end
-    #1.times do |i|
-    #  @threads << Thread.new do
-    #    loop do
-    #      s3_obj = @queue.pop
-    #      log("----- # %02d SCANNING #{s3_obj.key} #{s3_obj.content_length}" % i)
-    #      scan_file(s3_obj)
-    #    end
-    #  end
-    #end
-    #loop do
-    #  s3_obj = @queue.pop
-    #  scan_file(s3_obj)
-    #  sleep 5
-    #end
+    1.times do |i|
+      @threads << Thread.new do
+        loop do
+          s3_obj = @queue.pop
+          log("----- # %02d SCANNING #{s3_obj.key} #{s3_obj.content_length}" % i)
+          scan_file(s3_obj)
+        end
+      end
+    end
   end
 
   private
@@ -188,9 +183,9 @@ OptionParser.new do |opt|
 end.parse!
 
 c = ClamS3.new(options)
-c.inject!
-#c.start_scan!
-#while c.threads.size > 0
-#  sleep 0.1
-#end
+#c.inject!
+c.start_scan!
+while c.threads.size > 0
+  sleep 0.1
+end
 puts 'done'
