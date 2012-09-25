@@ -7,7 +7,7 @@ require 'aws/s3'
 class ClamS3
 
   def initialize(options={})
-    options.merge!(YAML.load_file('config/amazon.yml'))
+    options.merge!(YAML.load_file('config/settings.yml')['amazon'])
     options.keys.each do |key|
       options[(key.to_sym rescue key) || key] = options.delete(key)
     end
