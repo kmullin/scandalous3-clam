@@ -37,7 +37,7 @@ class ClamS3
           size integer,
           md5 varchar(32),
           is_virus integer,
-          checked_date datetime,
+          scanned_date datetime,
           PRIMARY KEY (aws_key, bucket)
         );
       SQL
@@ -54,6 +54,7 @@ class ClamS3
       log("done!")
     end
     @queue = Queue.new
+    @mutex = Mutex.new
 
   end
 
@@ -74,51 +75,71 @@ class ClamS3
 
   def start_scan!
     @threads = []
-    trap('INT') { @threads.dup.each {|t| Thread.kill(t); t.join(1); @threads.delete(t) } }
-    @threads << Thread.new do
-      while @queue.size < 100
-        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
-        @queue.push(@bucket[get_last_scanned_asset])
-        sleep 5
-      end
-    end
-    5.times do |i|
-      @threads << Thread.new do
-        loop do
-          s3_obj = @queue.pop
-          log("----- # %02d SCANNING #{s3_obj.key}" % i)
-          # s3_obj = @bucket[aws_key]
-          # scan_file(s3_obj)
-          sleep 3
+    trap('INT') { @threads.dup.each {|t| Thread.kill(t); t.join; @threads.delete(t) } }
+        get_unscanned_assets.each do |aws_key|
+          @queue.push(@bucket[aws_key])
         end
-      end
+    #@threads << Thread.new do
+    #  loop do
+    #    @queue.clear
+    #    $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
+    #    if @queue.size < 100
+    #      inject!
+    #    else
+    #      sleep 30
+    #    end
+    #  end
+    #end
+    #1.times do |i|
+    #  @threads << Thread.new do
+    #    loop do
+    #      s3_obj = @queue.pop
+    #      log("----- # %02d SCANNING #{s3_obj.key} #{s3_obj.size}" % i)
+    #      scan_file(s3_obj)
+    #    end
+    #  end
+    #end
+    loop do
+      s3_obj = @queue.pop
+      scan_file(s3_obj)
+      sleep 5
     end
   end
 
   private
 
   def scan_file(s3_obj)
-    tempfile = Tempfile.new(File.basename(s3_obj.key))
-    AWS::S3::S3Object.stream(s3_obj.key, s3_obj.bucket.name) do |chunk|
-      tempfile.write(chunk) # chunk.size works (progress bar?)
-    end
+    puts s3_obj.inspect
+    tempfile = Tempfile.open(File.basename(s3_obj.key))
+    @mutex.synchronize {
+      log "writing to: #{tempfile.path}"
+      AWS::S3::S3Object.stream(s3_obj.key, s3_obj.bucket.name) do |chunk|
+        tempfile.write(chunk) # chunk.size works (progress bar?)
+      end
+    }
+    log "REALLY SCANNING"
     tempfile.close
     result = @clamav.scanfile(tempfile.path)
     tempfile.unlink
-    is_virus = result == 0 ? false : true
-    if is_virus
+    unless result.nil?
       @db.execute <<-SQL
         update amazon_assets
-        set (is_virus = #{is_virus ? 0 : 1}, scanned_date = '#{Time.now.utc}')
+        set is_virus = #{result == 0 ? 0 : 1}, scanned_date = '#{Time.now.utc}'
         where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.size}' and md5 = '#{s3_obj.etag}');
       SQL
     end
-    is_virus
+    result == 0 ? false : true
+    log "returning"
   end
 
   def get_last_scanned_asset
     rows = @db.execute("select min(aws_key) from amazon_assets where bucket = '#{@bucket.name}' and is_virus is null;")
     rows.empty? ? nil : rows[0][0]
+  end
+
+  def get_unscanned_assets
+    rows = @db.execute("select aws_key from amazon_assets where bucket = '#{@bucket.name}' and is_virus is null;")
+    rows.flatten
   end
 
   def get_last_asset_key
