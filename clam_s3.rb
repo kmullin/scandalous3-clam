@@ -55,7 +55,9 @@ class ClamS3
 
   def inject!
     count = 0
-    @bucket.each do |obj|
+    puts get_last_asset_key
+    exit 
+    @bucket.objects.each do |obj|
       count += 1
       log("# %06d: %s" % [count, obj.inspect], false)
       if asset_exists?(obj)
@@ -80,6 +82,11 @@ class ClamS3
     tempfile.unlink
   end
 
+  def get_last_asset_key
+    rows = @db.execute("SELECT MAX(aws_key) from amazon_assets;")
+    rows.empty? ? nil : rows[0][0]
+  end
+
   def asset_exists?(s3_obj)
     rows = @db.execute <<-SQL
       SELECT aws_key, bucket, size, md5
@@ -87,6 +94,15 @@ class ClamS3
       WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{s3_obj.bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
     SQL
     ! rows.empty?
+  end
+
+  def asset_scanned?(s3_obj)
+    rows = @db.execute <<-SQL
+      SELECT is_virus, checked_date
+      FROM amazon_assets
+      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{s3_obj.bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
+    SQL
+    ! rows.first.compact.empty?
   end
 
   def log(msg, newline=true)
