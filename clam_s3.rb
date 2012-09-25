@@ -22,7 +22,9 @@ class ClamS3
     @dry_run = options[:dry_run] || false
     @verbose = options[:verbose] || false
     @debug = options[:debug] || false
+    @max_threads = options[:max_threads] || 5+1
     database = YAML.load_file(options[:conf_file])['database']
+    log options
     unless @dry_run
       @clamav = ClamAV.instance
       log("Loading ClamAV Database... ", false)
@@ -54,20 +56,16 @@ class ClamS3
       log("done!")
     end
     @queue = Queue.new
-
   end
 
   def inject!
     count = 0
     @bucket.objects.each(:next_token => {:marker => get_last_asset_key}) do |obj|
       count += 1
-      log("# %06d: %s" % [count, obj.inspect], false)
-      if asset_exists?(obj)
-        log(' exists!', false)
-      else
+      log("# %06d: %s" % [count, obj.inspect])
+      unless asset_exists?(obj)
         @db.execute("insert into amazon_assets (aws_key, bucket, size, md5) values ('%s', '%s', '%s', %s);" % [obj.key, obj.bucket.name, obj.content_length, obj.etag])
       end
-      log('')
       break if count >= 100
     end
   end
@@ -89,7 +87,7 @@ class ClamS3
         end
       end
     end
-    1.times do |i|
+    (@max_threads - @threads.size).times do |i|
       @threads << Thread.new do
         loop do
           s3_obj = @queue.pop
@@ -103,13 +101,10 @@ class ClamS3
   private
 
   def scan_file(s3_obj)
-    puts s3_obj.inspect
     tempfile = Tempfile.open(File.basename(s3_obj.key))
-    log "writing to: #{tempfile.path}"
     s3_obj.read do |chunk|
       tempfile.write(chunk) # chunk.size works (progress bar?)
     end
-    log "REALLY SCANNING"
     tempfile.close
     result = @clamav.scanfile(tempfile.path)
     tempfile.unlink
@@ -117,11 +112,10 @@ class ClamS3
       @db.execute <<-SQL
         update amazon_assets
         set is_virus = #{result == 0 ? 0 : 1}, scanned_date = '#{Time.now.utc}'
-        where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
+        where (aws_key like '%#{File.basename(s3_obj.key)}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
       SQL
     end
     result == 0 ? false : true
-    log "returning"
   end
 
   def get_last_scanned_asset
@@ -130,7 +124,7 @@ class ClamS3
   end
 
   def get_unscanned_assets
-    rows = @db.execute("select aws_key from amazon_assets where bucket = '#{@bucket.name}' and is_virus is null;")
+    rows = @db.execute("select aws_key from amazon_assets where (bucket = '#{@bucket.name}' and is_virus is null) group by md5;")
     rows.flatten
   end
 
@@ -179,6 +173,7 @@ OptionParser.new do |opt|
   opt.on('-d', '--debug', 'Debug') { options[:debug] = true }
   opt.on('-n', '--dry-run', 'Dry run') { options[:dry_run] = true }
   opt.on('-b', '--bucket NAME', 'bucket name') { |name| options[:bucket] = name }
+  opt.on('-m', '--max-threads NUM', Integer, 'max threads (def. 5 + 1)') { |num| options[:max_threads] = num }
 
 end.parse!
 
