@@ -18,6 +18,17 @@ class ClamS3
     @debug = options[:debug] || false
     unless @dry_run
       @db = SQLite3::Database.new(YAML.load_file(options[:conf_file])['database'])
+      @db.execute <<-SQL
+        create table if not exists amazon_assets (
+          aws_key varchar(255),
+          bucket varchar(255),
+          size integer,
+          md5 varchar(32),
+          is_virus integer,
+          checked_date datetime,
+          PRIMARY KEY (aws_key, bucket)
+        );
+      SQL
       AWS::S3::Base.establish_connection!(
         :access_key_id     => options[:access_key_id],
         :secret_access_key => options[:secret_access_key],
@@ -25,10 +36,42 @@ class ClamS3
       )
       @bucket = AWS::S3::Bucket.find(options[:bucket])
     end
+
   end
 
-  def size
-    @bucket.size unless @dry_run
+  def inject!
+    count = 0
+    @bucket.each do |obj|
+      count += 1
+      log("# %06d: %s" % [count, obj.inspect], false)
+      if asset_exists?(obj)
+        log(' exists!', false)
+      else
+        @db.execute("INSERT INTO amazon_assets (aws_key, bucket, size, md5) VALUES ('%s', '%s', '%s', '%s');" % [obj.key, @bucket.name, obj.size, obj.etag])
+      end
+      log('')
+      break if count >= 100
+    end
+  end
+
+  private
+
+  def asset_exists?(s3_obj)
+    rows = @db.execute <<-SQL
+      SELECT aws_key, bucket, size, md5
+      FROM amazon_assets
+      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{@bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
+    SQL
+    ! rows.empty?
+  end
+
+  def log(msg, newline=true)
+    return unless @verbose
+    if newline
+      puts msg
+    else
+      print msg
+    end
   end
 
 end
@@ -48,4 +91,5 @@ OptionParser.new do |opt|
 end.parse!
 
 c = ClamS3.new(options)
-puts c.size
+c.inject!
+puts 'done'
