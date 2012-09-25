@@ -12,6 +12,8 @@ class ClamS3
       options[(key.to_sym rescue key) || key] = options.delete(key)
     end
     @dry_run = options[:dry_run] || false
+    @verbose = options[:verbose] || false
+    @debug = options[:debug] || false
     unless @dry_run
       AWS::S3::Base.establish_connection!(
         :access_key_id     => options[:access_key_id],
