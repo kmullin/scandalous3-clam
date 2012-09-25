@@ -2,12 +2,14 @@
 
 require 'optparse'
 require 'yaml'
+require 'sqlite3'
 require 'aws/s3'
 
 class ClamS3
 
   def initialize(options={})
-    options.merge!(YAML.load_file('config/settings.yml')['amazon'])
+    options[:conf_file] ||= 'config/settings.yml'
+    options.merge!(YAML.load_file(options[:conf_file])['amazon'])
     options.keys.each do |key|
       options[(key.to_sym rescue key) || key] = options.delete(key)
     end
@@ -15,6 +17,7 @@ class ClamS3
     @verbose = options[:verbose] || false
     @debug = options[:debug] || false
     unless @dry_run
+      @db = SQLite3::Database.new(YAML.load_file(options[:conf_file])['database'])
       AWS::S3::Base.establish_connection!(
         :access_key_id     => options[:access_key_id],
         :secret_access_key => options[:secret_access_key],

@@ -2,5 +2,4 @@ amazon:
   access_key_id: YOUR_KEY_HERE
   secret_access_key: YOUR_SECRET_KEY_HERE
 
-database:
-  file: db/database.sqlite3
+database: db/database.sqlite3

@@ -1,3 +1,9 @@
+GIT
+  remote: git://github.com/kmullin/clamav.git
+  revision: b9bc36418bd8acbfa4467de2fc8bfb784d65d7ea
+  specs:
+    clamav (0.4.1)
+
 GEM
   remote: http://rubygems.org/
   specs:
@@ -15,4 +21,5 @@ PLATFORMS
 
 DEPENDENCIES
   aws-s3
+  clamav!
   sqlite3
