@@ -61,7 +61,7 @@ class ClamS3
       if asset_exists?(obj)
         log(' exists!', false)
       else
-        @db.execute("INSERT INTO amazon_assets (aws_key, bucket, size, md5) VALUES ('%s', '%s', '%s', '%s');" % [obj.key, obj.bucket.name, obj.size, obj.etag])
+        @db.execute("insert into amazon_assets (aws_key, bucket, size, md5) values ('%s', '%s', '%s', '%s');" % [obj.key, obj.bucket.name, obj.size, obj.etag])
       end
       log('')
       break if count >= 100
@@ -80,25 +80,30 @@ class ClamS3
     tempfile.unlink
   end
 
+  def get_last_scanned_asset
+    rows = @db.execute("select min(aws_key) from amazon_assets where bucket = '#{@bucket.name}' and is_virus is null;")
+    rows.empty? ? nil : rows[0][0]
+  end
+
   def get_last_asset_key
-    rows = @db.execute("SELECT MAX(aws_key) from amazon_assets;")
+    rows = @db.execute("select max(aws_key) from amazon_assets where bucket = '#{@bucket.name}';")
     rows.empty? ? nil : rows[0][0]
   end
 
   def asset_exists?(s3_obj)
     rows = @db.execute <<-SQL
-      SELECT aws_key, bucket, size, md5
-      FROM amazon_assets
-      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{s3_obj.bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
+      select aws_key, bucket, size, md5
+      from amazon_assets
+      where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.size}' and md5 = '#{s3_obj.etag}');
     SQL
     ! rows.empty?
   end
 
   def asset_scanned?(s3_obj)
     rows = @db.execute <<-SQL
-      SELECT is_virus, checked_date
-      FROM amazon_assets
-      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{s3_obj.bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
+      select is_virus, checked_date
+      from amazon_assets
+      where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.size}' and md5 = '#{s3_obj.etag}');
     SQL
     ! rows.first.compact.empty?
   end
