@@ -68,6 +68,10 @@ class ClamS3
     end
   end
 
+  def start_scan!
+    # start a thread to walk db keys
+  end
+
   private
 
   def scan_file(s3_obj)
@@ -76,8 +80,17 @@ class ClamS3
       tempfile.write(chunk) # chunk.size works (progress bar?)
     end
     tempfile.close
-    @clamav.scanfile(tempfile.path)
+    result = @clamav.scanfile(tempfile.path)
     tempfile.unlink
+    is_virus = result == 0 ? false : true
+    if is_virus
+      @db.execute <<-SQL
+        update amazon_assets
+        set (is_virus = #{is_virus ? 0 : 1}, scanned_date = '#{Time.now.utc}')
+        where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.size}' and md5 = '#{s3_obj.etag}');
+      SQL
+    end
+    is_virus
   end
 
   def get_last_scanned_asset
