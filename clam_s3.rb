@@ -1,9 +1,12 @@
 #!/usr/bin/env ruby
 
+require 'bundler/setup'
 require 'optparse'
 require 'yaml'
 require 'sqlite3'
 require 'aws/s3'
+require 'tempfile'
+require 'clamav'
 
 class ClamS3
 
@@ -16,8 +19,14 @@ class ClamS3
     @dry_run = options[:dry_run] || false
     @verbose = options[:verbose] || false
     @debug = options[:debug] || false
+    database = YAML.load_file(options[:conf_file])['database']
     unless @dry_run
-      @db = SQLite3::Database.new(YAML.load_file(options[:conf_file])['database'])
+      @clamav = ClamAV.instance
+      log("Loading ClamAV Database... ", false)
+      @clamav.loaddb
+      log("done!")
+      log("Loading sqlite3 database #{database}... ", false)
+      @db = SQLite3::Database.new(database)
       @db.execute <<-SQL
         create table if not exists amazon_assets (
           aws_key varchar(255),
@@ -29,12 +38,17 @@ class ClamS3
           PRIMARY KEY (aws_key, bucket)
         );
       SQL
+      log("done!")
+      log("Establishing S3 connection... ", false)
       AWS::S3::Base.establish_connection!(
         :access_key_id     => options[:access_key_id],
         :secret_access_key => options[:secret_access_key],
         :use_ssl => true
       )
+      log("done!")
+      log("Finding S3 bucket #{options[:bucket]}... ", false)
       @bucket = AWS::S3::Bucket.find(options[:bucket])
+      log("done!")
     end
 
   end
@@ -47,7 +61,7 @@ class ClamS3
       if asset_exists?(obj)
         log(' exists!', false)
       else
-        @db.execute("INSERT INTO amazon_assets (aws_key, bucket, size, md5) VALUES ('%s', '%s', '%s', '%s');" % [obj.key, @bucket.name, obj.size, obj.etag])
+        @db.execute("INSERT INTO amazon_assets (aws_key, bucket, size, md5) VALUES ('%s', '%s', '%s', '%s');" % [obj.key, obj.bucket.name, obj.size, obj.etag])
       end
       log('')
       break if count >= 100
@@ -56,11 +70,21 @@ class ClamS3
 
   private
 
+  def scan_file(s3_obj)
+    tempfile = Tempfile.new(File.basename(s3_obj.key))
+    AWS::S3::S3Object.stream(s3_obj.key, s3_obj.bucket.name) do |chunk|
+      tempfile.write(chunk) # chunk.size works (progress bar?)
+    end
+    tempfile.close
+    @clamav.scanfile(tempfile.path)
+    tempfile.unlink
+  end
+
   def asset_exists?(s3_obj)
     rows = @db.execute <<-SQL
       SELECT aws_key, bucket, size, md5
       FROM amazon_assets
-      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{@bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
+      WHERE (aws_key = '#{s3_obj.key}' AND bucket = '#{s3_obj.bucket.name}' AND size = '#{s3_obj.size}' AND md5 = '#{s3_obj.etag}');
     SQL
     ! rows.empty?
   end
