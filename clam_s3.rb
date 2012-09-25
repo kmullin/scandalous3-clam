@@ -36,7 +36,7 @@ OptionParser.new do |opt|
   opt.on('-v', '--verbose', 'Verbose') { options[:verbose] = true }
   opt.on('-d', '--debug', 'Debug') { options[:debug] = true }
   opt.on('-n', '--dry-run', 'Dry run') { options[:dry_run] = true }
-  opt.on('-b', '--bucket name', 'bucket name') { |name| options[:bucket] = name }
+  opt.on('-b', '--bucket NAME', 'bucket name') { |name| options[:bucket] = name }
 
 end.parse!
 
