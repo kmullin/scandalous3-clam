@@ -7,8 +7,11 @@ require 'sqlite3'
 require 'aws/s3'
 require 'tempfile'
 require 'clamav'
+require 'thread'
 
 class ClamS3
+
+  attr_accessor :threads
 
   def initialize(options={})
     options[:conf_file] ||= 'config/settings.yml'
@@ -50,6 +53,7 @@ class ClamS3
       @bucket = AWS::S3::Bucket.find(options[:bucket])
       log("done!")
     end
+    @queue = Queue.new
 
   end
 
@@ -69,7 +73,26 @@ class ClamS3
   end
 
   def start_scan!
-    # start a thread to walk db keys
+    @threads = []
+    trap('INT') { @threads.dup.each {|t| Thread.kill(t); t.join(1); @threads.delete(t) } }
+    @threads << Thread.new do
+      while @queue.size < 100
+        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
+        @queue.push(@bucket[get_last_scanned_asset])
+        sleep 5
+      end
+    end
+    5.times do |i|
+      @threads << Thread.new do
+        loop do
+          s3_obj = @queue.pop
+          log("----- # %02d SCANNING #{s3_obj.key}" % i)
+          # s3_obj = @bucket[aws_key]
+          # scan_file(s3_obj)
+          sleep 3
+        end
+      end
+    end
   end
 
   private
@@ -147,5 +170,9 @@ OptionParser.new do |opt|
 end.parse!
 
 c = ClamS3.new(options)
-c.inject!
+#c.inject!
+c.start_scan!
+while c.threads.size > 0
+  sleep 0.1
+end
 puts 'done'
