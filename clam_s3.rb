@@ -32,6 +32,7 @@ class ClamS3
       log("done!")
       log("Loading sqlite3 database #{database}... ", false)
       @db = SQLite3::Database.new(database)
+      @db.busy_timeout = 3 * 1000 # 3 seconds
       @db.execute <<-SQL
         create table if not exists amazon_assets (
           aws_key varchar(255),
@@ -66,7 +67,6 @@ class ClamS3
       unless asset_exists?(obj)
         @db.execute("insert into amazon_assets (aws_key, bucket, size, md5) values ('%s', '%s', '%s', %s);" % [obj.key, obj.bucket.name, obj.content_length, obj.etag])
       end
-      break if count >= 100
     end
   end
 
@@ -83,7 +83,7 @@ class ClamS3
         if @queue.size < 100
           inject!
         else
-          sleep 30
+          sleep 5
         end
       end
     end
