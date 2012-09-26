@@ -81,7 +81,7 @@ class ClamS3
         get_unscanned_assets.each do |aws_key|
           @queue.push(@bucket.objects[aws_key])
         end
-        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}]"
+        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}/#{total_scanned}]"
         sleep 5
       end
     end
@@ -103,6 +103,11 @@ class ClamS3
         end
       end
     end
+  end
+
+  def total_scanned
+    rows = @db.execute("select count(*) from amazon_assets where is_virus is not null;")
+    rows.empty? ? nil : rows[0][0]
   end
 
   private
@@ -145,15 +150,6 @@ class ClamS3
     ! rows.empty?
   end
 
-  #def asset_scanned?(s3_obj)
-  #  rows = @db.execute <<-SQL
-  #    select is_virus, checked_date
-  #    from amazon_assets
-  #    where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
-  #  SQL
-  #  ! rows.first.compact.empty?
-  #end
-
   def log(msg, newline=true)
     return unless @verbose
     if newline
@@ -175,6 +171,7 @@ OptionParser.new do |opt|
   opt.on('-v', '--verbose', 'Verbose') { options[:verbose] = true }
   opt.on('-d', '--debug', 'Debug') { options[:debug] = true }
   opt.on('-n', '--dry-run', 'Dry run') { options[:dry_run] = true }
+  opt.on('-t', '--total-scanned', 'Print how many scanned') { puts "-t not implemented yet" } # do nothing for now
   opt.on('-b', '--bucket NAME', 'bucket name') { |name| options[:bucket] = name }
   opt.on('-m', '--max-threads NUM', Integer, 'max threads (def. 5 + 2)') { |num| options[:max_threads] = num + 2 }
 
