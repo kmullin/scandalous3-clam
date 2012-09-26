@@ -74,14 +74,14 @@ class ClamS3
 
   def start_scan!
     @threads = []
-    trap('INT') { @threads.dup.each {|t| Thread.kill(t); t.join; @threads.delete(t) } }
+    trap('INT') { log("Scanned #{@files_scanned} files."); @threads.dup.each {|t| Thread.kill(t); t.join; @threads.delete(t) } }
     @threads << Thread.new do
       loop do
         @queue.clear
         get_unscanned_assets.each do |aws_key|
           @queue.push(@bucket.objects[aws_key])
         end
-        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size}]"
+        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}]"
         sleep 5
       end
     end
