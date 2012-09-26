@@ -145,14 +145,14 @@ class ClamS3
     ! rows.empty?
   end
 
-  def asset_scanned?(s3_obj)
-    rows = @db.execute <<-SQL
-      select is_virus, checked_date
-      from amazon_assets
-      where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
-    SQL
-    ! rows.first.compact.empty?
-  end
+  #def asset_scanned?(s3_obj)
+  #  rows = @db.execute <<-SQL
+  #    select is_virus, checked_date
+  #    from amazon_assets
+  #    where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
+  #  SQL
+  #  ! rows.first.compact.empty?
+  #end
 
   def log(msg, newline=true)
     return unless @verbose
