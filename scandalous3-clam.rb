@@ -30,21 +30,23 @@ class ClamS3
       log("Loading ClamAV Database... ", false)
       @clamav.loaddb
       log("done!")
-      log("Loading sqlite3 database #{database}... ", false)
-      @db = SQLite3::Database.new(database)
-      @db.busy_timeout = 3 * 1000 # 3 seconds
-      @db.execute <<-SQL
-        create table if not exists amazon_assets (
-          aws_key varchar(255),
-          bucket varchar(255),
-          size integer,
-          md5 varchar(32),
-          is_virus integer,
-          scanned_date datetime,
-          PRIMARY KEY (aws_key, bucket)
-        );
-      SQL
-      log("done!")
+      @redis = Redis.new
+      #log("Loading sqlite3 database #{database}... ", false)
+      #@db = SQLite3::Database.new(database)
+      #@db.busy_timeout = 3 * 1000 # 3 seconds
+      #@db.execute <<-SQL
+      #  create table if not exists amazon_assets (
+      #    aws_key varchar(255),
+      #    bucket varchar(255),
+      #    size integer,
+      #    md5 varchar(32),
+      #    is_virus integer,
+      #    scanned_date datetime,
+      #    PRIMARY KEY (aws_key, bucket)
+      #  );
+      #SQL
+      #log("done!")
+      @redis.setnx("scandalous3-clam:bucket_id", 1)
       log("Establishing S3 connection... ", false)
       @S3 = AWS::S3.new(
         :access_key_id     => options[:access_key_id],
@@ -67,7 +69,7 @@ class ClamS3
       count += 1
       log("# %06d: %s" % [count, obj.inspect])
       unless asset_exists?(obj)
-        @db.execute("insert into amazon_assets (aws_key, bucket, size, md5) values ('%s', '%s', '%s', %s);" % [obj.key, obj.bucket.name, obj.content_length, obj.etag])
+        #@db.execute("insert into amazon_assets (aws_key, bucket, size, md5) values ('%s', '%s', '%s', %s);" % [obj.key, obj.bucket.name, obj.content_length, obj.etag])
       end
     end
   end
@@ -121,33 +123,33 @@ class ClamS3
     result = @clamav.scanfile(tempfile.path)
     tempfile.unlink
     unless result.nil?
-      @db.execute <<-SQL
-        update amazon_assets
-        set is_virus = #{result == 0 ? 0 : 1}, scanned_date = '#{Time.now.utc}'
-        where (aws_key like '%#{File.basename(s3_obj.key)}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
-      SQL
+      #@db.execute <<-SQL
+      #  update amazon_assets
+      #  set is_virus = #{result == 0 ? 0 : 1}, scanned_date = '#{Time.now.utc}'
+      #  where (aws_key like '%#{File.basename(s3_obj.key)}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
+      #SQL
       @mutex.synchronize { @files_scanned += 1 }
     end
     ! result.nil?
   end
 
   def get_unscanned_assets
-    rows = @db.execute("select aws_key from amazon_assets where (bucket = '#{@bucket.name}' and is_virus is null) group by md5;")
-    rows.flatten
+    #rows = @db.execute("select aws_key from amazon_assets where (bucket = '#{@bucket.name}' and is_virus is null) group by md5;")
+    #rows.flatten
   end
 
   def get_last_asset_key
-    rows = @db.execute("select max(aws_key) from amazon_assets where bucket = '#{@bucket.name}';")
-    rows.empty? ? nil : rows[0][0]
+    #rows = @db.execute("select max(aws_key) from amazon_assets where bucket = '#{@bucket.name}';")
+    #rows.empty? ? nil : rows[0][0]
   end
 
   def asset_exists?(s3_obj)
-    rows = @db.execute <<-SQL
-      select aws_key, bucket, size, md5
-      from amazon_assets
-      where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
-    SQL
-    ! rows.empty?
+    #rows = @db.execute <<-SQL
+    #  select aws_key, bucket, size, md5
+    #  from amazon_assets
+    #  where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
+    #SQL
+    #! rows.empty?
   end
 
   def log(msg, newline=true)
