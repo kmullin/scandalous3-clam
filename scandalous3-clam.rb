@@ -81,7 +81,7 @@ class ClamS3
         get_unscanned_assets.each do |aws_key|
           @queue.push(@bucket.objects[aws_key])
         end
-        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}/#{total_scanned}]"
+        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}]"
         sleep 5
       end
     end
@@ -105,10 +105,10 @@ class ClamS3
     end
   end
 
-  def total_scanned
-    rows = @db.execute("select count(*) from amazon_assets where is_virus is not null;")
-    rows.empty? ? nil : rows[0][0]
-  end
+  #def total_scanned
+  #  rows = @db.execute("select count(*) from amazon_assets where is_virus is not null;")
+  #  rows.empty? ? nil : rows[0][0]
+  #end
 
   private
 
