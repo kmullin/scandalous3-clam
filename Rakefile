@@ -4,13 +4,12 @@ require 'redis'
 
 # Redis data model
 # PREFIX scandalous3-clam
-# hash "prefix:assets:bucket_id:md5:aws_key"
-# string "prefix:buckets:name", 1
-# list "prefix:unscanned_assets:bucket_id"
-# list "prefix:
-# string "scandalous3-clam:total_scanned", 0
-# hash "scan
-#
+# nextBucketid : string : 'prefix|nextBucketid'
+# totalScanned : string : 'prefix|totalScanned'
+# totalInfected: string : 'prefix|totalInfected'
+# bucket_id    : string : 'prefix|bucket|BUCKET_NAME'
+# assets       : hash   : 'prefix|asset|bucket_id|md5|size'
+# unscanned    : list   : 'prefix|unscanned' 'bucket_id|aws_key'
 
 desc "testing"
 task :migrate_to_redis do
@@ -19,10 +18,8 @@ task :migrate_to_redis do
   redis = Redis.new(:host => '127.0.0.1')
   rows = db.execute("select * from amazon_assets");
   prefix = "scandalous3-clam"
-  # create bucket_id
-  redis.setnx([prefix, 'bucket_id'].join('|'), 0)
-  redis.incr([prefix, 'bucket_id'].join('|'))
   count = 0
+  redis.setnx([prefix, 'nextBucketid'].join('|'), 0)
   f = open('redis.cmd', 'wb')
   rows.each do |row|
     count += 1
@@ -36,10 +33,11 @@ task :migrate_to_redis do
     bucket_id = redis.get([prefix, 'bucket', bucket].join('|'))
     if bucket_id.nil?
       # create new bucket id
-      bucket_id = redis.incr([prefix, 'bucket_id'].join('|'))
+      bucket_id = redis.incr([prefix, 'nextBucketid'].join('|'))
       bucket_id = redis.set([prefix, 'bucket', bucket].join('|'), bucket_id)
     end
-    asset_key = [prefix, 'assets', bucket_id, md5, aws_key].join('|')
+
+    asset_key = [prefix, 'asset', bucket_id, md5, size].join('|')
 
     if is_virus.nil? and scanned_date.nil?
       statement = "LPUSH unscanned_assets #{asset_key}\n"
