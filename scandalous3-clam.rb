@@ -75,13 +75,14 @@ class ClamS3
   def start_scan!
     @threads = []
     trap('INT') { log("Scanned #{@files_scanned} files."); @threads.dup.each {|t| Thread.kill(t); t.join; @threads.delete(t) } }
+    trap('HUP') { log("ClamAV Reloading"); @clamav.reload }
     @threads << Thread.new do
       loop do
         @queue.clear
         get_unscanned_assets.each do |aws_key|
           @queue.push(@bucket.objects[aws_key])
         end
-        $0 = "Running [Queue: #{@queue.size} Threads: #{@threads.size} Scanned: #{@files_scanned}]"
+        $0 = "ScandalouS3 [Q:#{@queue.size} T:#{@threads.size} S:#{@files_scanned}/#{total_scanned}]"
         sleep 5
       end
     end
@@ -105,10 +106,10 @@ class ClamS3
     end
   end
 
-  #def total_scanned
-  #  rows = @db.execute("select count(*) from amazon_assets where is_virus is not null;")
-  #  rows.empty? ? nil : rows[0][0]
-  #end
+  def total_scanned
+    rows = @db.execute("select count(*) from amazon_assets where is_virus is not null;")
+    rows.empty? ? nil : rows[0][0]
+  end
 
   private
 
@@ -143,7 +144,7 @@ class ClamS3
 
   def asset_exists?(s3_obj)
     rows = @db.execute <<-SQL
-      select aws_key, bucket, size, md5
+      select aws_key
       from amazon_assets
       where (aws_key = '#{s3_obj.key}' and bucket = '#{s3_obj.bucket.name}' and size = '#{s3_obj.content_length}' and md5 = #{s3_obj.etag});
     SQL
