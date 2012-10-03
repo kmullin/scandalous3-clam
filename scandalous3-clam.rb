@@ -14,8 +14,9 @@ class ClamS3
   attr_accessor :threads
 
   def initialize(options={})
+    yaml_file = YAML.load_file(options[:conf_file])
     options[:conf_file] ||= 'config/settings.yml'
-    options.merge!(YAML.load_file(options[:conf_file])['amazon'])
+    options.merge!(yaml_file['amazon'])
     options.keys.each do |key|
       options[(key.to_sym rescue key) || key] = options.delete(key)
     end
@@ -23,7 +24,7 @@ class ClamS3
     @verbose = options[:verbose] || false
     @debug = options[:debug] || false
     @max_threads = options[:max_threads] || 5+2 # workers + control
-    database = YAML.load_file(options[:conf_file])['database']
+    database = yaml_file['database']
     log options
     unless @dry_run
       @clamav = ClamAV.instance
