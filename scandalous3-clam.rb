@@ -179,6 +179,7 @@ OptionParser.new do |opt|
 
 end.parse!
 
+raise OptionParser::MissingArgument, "bucket not provided (-b)" if options[:bucket].nil?
 c = ClamS3.new(options)
 c.start_scan!
 while c.threads.size > 0
