@@ -14,8 +14,8 @@ class ClamS3
   attr_accessor :threads
 
   def initialize(options={})
-    yaml_file = YAML.load_file(options[:conf_file])
     options[:conf_file] ||= 'config/settings.yml'
+    yaml_file = YAML.load_file(options[:conf_file])
     options.merge!(yaml_file['amazon'])
     options.keys.each do |key|
       options[(key.to_sym rescue key) || key] = options.delete(key)
